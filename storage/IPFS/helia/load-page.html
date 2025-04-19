@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IPFS 静态页面加载</title>
+  <script type="module">
+    import { createHelia } from 'https://cdn.jsdelivr.net/npm/helia@latest/dist/index.min.js';
+    import { unixfs } from 'https://cdn.jsdelivr.net/npm/@helia/unixfs@latest/dist/index.min.js';
+    import { CID } from 'https://cdn.jsdelivr.net/npm/multiformats@latest/dist/index.min.js';
+
+    async function initializeHelia() {
+      const helia = await createHelia();
+      const fs = unixfs(helia);
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const cid = urlParams.get('cid');
+      if (!cid) {
+        alert('未提供 CID 参数');
+        return;
+      }
+
+      try {
+        const htmlData = [];
+        for await (const chunk of fs.cat(CID.parse(cid))) {
+          htmlData.push(new TextDecoder().decode(chunk));
+        }
+        document.documentElement.innerHTML = htmlData.join('');
+      } catch (error) {
+        alert('加载 IPFS 内容失败：' + error.message);
+      }
+    }
+
+    initializeHelia();
+  </script>
+</head>
+<body>
+  <p>正在加载 IPFS 页面...</p>
+</body>
+</html>
