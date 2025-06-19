@@ -1,45 +1,73 @@
-# .github/workflows/publish-docs-to-readme.yml
-name: Publish Docs to ReadMe
+# .github/workflows/publish-all-docs-to-readme.yml
+name: Publish All Docs to ReadMe (no Node.js)
 
 on:
-  # 1) push 到 docs 分支自动触发
   push:
     branches:
       - docs
-
-  # 2) 手动触发时，让用户可以选分支（默认 docs）
   workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Which branch contains your docs folder?'
-        required: true
-        default: 'docs'
+
+env:
+  READMECOM_API_BASE: https://dash.readme.com/api/v1
 
 jobs:
   publish-readme:
     runs-on: ubuntu-latest
 
     steps:
-      # ❗️ 一定要在 checkout 时指定 ref，让 runner 真正拉下 docs 分支的内容
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          # 当是 push 触发时，github.ref 就是 "refs/heads/docs"
-          # 当是 workflow_dispatch 时，用用户输入的 branch
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref }}
           fetch-depth: 0
+          ref: docs
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+      - name: Find and upload all MD/MDX files
+        env:
+          API_KEY: ${{ secrets.README_API_KEY }}
+          PROJECT: "<your-project-id>"    # 可选：如果你有多个项目，填这里
+        run: |
+          set -euo pipefail
 
-      # 这里我们推荐用官方 Action，内部会调用 rdme@9
-      - name: Sync docs via ReadMe Action
-        uses: readmeio/rdme@v9.0.0
-        with:
-          # 这一行跟 CLI 语法一致
-          rdme: docs ./docs --key=${{ secrets.README_API_KEY }}
+          # 扫描 docs 下的所有 .md 和 .mdx 文件
+          find docs -type f \( -iname '*.md' -o -iname '*.mdx' \) | while read -r filepath; do
+            # 生成 slug：去掉 docs/ 前缀和后缀
+            slug=$(echo "$filepath" | sed -e 's|^docs/||' -e 's|\.[Mm][Dd][Xx]\?$||')
+            echo "→ Processing $filepath (slug: $slug)"
+
+            # 读取并 JSON-encode 文件内容
+            body=$(jq -Rs . < "$filepath")
+
+            # 查询是否已经存在同名页面
+            resp=$(curl -s -G \
+              --data-urlencode "slug=$slug" \
+              "$READMECOM_API_BASE/content" \
+              -H "Authorization: Basic $API_KEY")
+            id=$(echo "$resp" | jq -r '.[0].id // empty')
+
+            if [ -z "$id" ]; then
+              echo "   • Creating new page"
+              curl -s -X POST "$READMECOM_API_BASE/content" \
+                -H "Authorization: Basic $API_KEY" \
+                -H "Content-Type: application/json" \
+                -d '{
+                  "project": "'"${PROJECT}"'",
+                  "category": "guides",
+                  "slug": "'"${slug}"'",
+                  "title": "'"${slug//-/ }"'",
+                  "body": '"$body"'
+                }'
+            else
+              echo "   • Updating page ID $id"
+              curl -s -X PUT "$READMECOM_API_BASE/content/$id" \
+                -H "Authorization: Basic $API_KEY" \
+                -H "Content-Type: application/json" \
+                -d '{
+                  "body": '"$body"'
+                }'
+            fi
+
+            echo
+          done
 
       - name: Done
-        run: echo "📚 Docs have been published to ReadMe.com 🎉"
+        run: echo "✅ All docs (.md & .mdx) have been synced to ReadMe.com"
