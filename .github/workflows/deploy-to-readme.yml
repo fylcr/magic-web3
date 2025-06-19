@@ -14,25 +14,10 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+
+      - name: Sync docs via ReadMe Action
+        # 这里用最新稳定版的 readmeio/rdme，你也可以指定具体版本号
+        uses: readmeio/rdme@v9.0.0
         with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install rdme CLI
-        run: npm install -g rdme    # ← 改成 rdme
-
-      - name: Publish MDX docs to ReadMe
-        env:
-          README_API_KEY: ${{ secrets.README_API_KEY }}
-        run: |
-          rdme docs ./docs \
-            --key "$README_API_KEY"
-            # 如果需要指定项目 ID：
-            # --id your-project-id
-
-      - name: Done
-        run: echo "📚 Docs have been published to ReadMe.com 🎉"
+          # 这个参数后面就是你要在 CLI 里执行的命令
+          rdme: docs ./docs --key=${{ secrets.README_API_KEY }}
