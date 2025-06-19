@@ -2,22 +2,44 @@
 name: Publish Docs to ReadMe
 
 on:
+  # 1) push 到 docs 分支自动触发
   push:
     branches:
       - docs
+
+  # 2) 手动触发时，让用户可以选分支（默认 docs）
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Which branch contains your docs folder?'
+        required: true
+        default: 'docs'
 
 jobs:
   publish-readme:
     runs-on: ubuntu-latest
 
     steps:
+      # ❗️ 一定要在 checkout 时指定 ref，让 runner 真正拉下 docs 分支的内容
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          # 当是 push 触发时，github.ref 就是 "refs/heads/docs"
+          # 当是 workflow_dispatch 时，用用户输入的 branch
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref }}
+          fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 这里我们推荐用官方 Action，内部会调用 rdme@9
       - name: Sync docs via ReadMe Action
-        # 这里用最新稳定版的 readmeio/rdme，你也可以指定具体版本号
         uses: readmeio/rdme@v9.0.0
         with:
-          # 这个参数后面就是你要在 CLI 里执行的命令
+          # 这一行跟 CLI 语法一致
           rdme: docs ./docs --key=${{ secrets.README_API_KEY }}
+
+      - name: Done
+        run: echo "📚 Docs have been published to ReadMe.com 🎉"
