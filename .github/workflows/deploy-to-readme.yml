@@ -3,44 +3,36 @@ name: Publish Docs to ReadMe
 
 on:
   push:
-    # 仅当 docs 分支有更新时触发
-    branches:[docs]
-  workflow_dispatch:
+    branches:
+      - docs
+  workflow_dispatch:   # 手动触发
 
 jobs:
   publish-readme:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 拉取代码
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          # 确保获取所有文件，包含子模块（如有）
           fetch-depth: 0
 
-      # 2. 安装 Node.js 环境（rdme CLI 需要）
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'
 
-      # 3. 全局安装 rdme CLI
       - name: Install rdme CLI
         run: npm install -g @readme/rdme
 
-      # 4. 上传 docs 目录下的 MDX/Markdown 文档
       - name: Publish MDX docs to ReadMe
         env:
-          # 在仓库 Settings → Secrets 中添加你的 README_API_KEY
           README_API_KEY: ${{ secrets.README_API_KEY }}
         run: |
-          # rdme docs 会扫描指定目录下的 .md/.mdx 文件并同步到 ReadMe.com
           rdme docs ./docs \
             --key "$README_API_KEY" \
-            # （可选）指定项目 ID，如果你有多个项目需要上传到指定项目：
-            # --id your-project-id 
+            # 如果你需要指定项目 ID，请取消下一行注释并填写你的项目 ID：
+            # --id your-project-id
 
-      # 【可选】5. 在发布完成后做点小提示
       - name: Done
         run: echo "📚 Docs have been published to ReadMe.com 🎉"
