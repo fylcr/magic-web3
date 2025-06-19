@@ -4,8 +4,8 @@ name: Publish Docs to ReadMe
 on:
   push:
     # 仅当 docs 分支有更新时触发
-    branches:
-      - docs
+    branches:[docs]
+  workflow_dispatch:
 
 jobs:
   publish-readme:
