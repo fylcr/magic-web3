@@ -1,73 +1,55 @@
-# .github/workflows/publish-all-docs-to-readme.yml
-name: Publish All Docs to ReadMe (no Node.js)
-
+name: Publish Docs to ReadMe
 on:
   push:
-    branches:
-      - docs
+    branches: [docs]
   workflow_dispatch:
-
-env:
-  READMECOM_API_BASE: https://dash.readme.com/api/v1
-
+    # 手动触发时可以定义输入参数（可选）
+    inputs:
+      version:
+        description: 'Release version (overrides README_VERSION_ID)'
+        required: false
+        default: ''
 jobs:
-  publish-readme:
+  publish-docs:
+    name: Publish all docs to ReadMe
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - name: Checkout docs branch
+        uses: actions/checkout@v3
         with:
-          fetch-depth: 0
           ref: docs
 
-      - name: Find and upload all MD/MDX files
-        env:
-          API_KEY: ${{ secrets.README_API_KEY }}
-          PROJECT: "<your-project-id>"    # 可选：如果你有多个项目，填这里
+      - name: Set up parameters
+        id: params
         run: |
-          set -euo pipefail
+          # 如果手动触发提供了 version，使用它，否则使用 secrets 中的默认
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version_id=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version_id=${{ secrets.README_VERSION_ID }}" >> $GITHUB_OUTPUT
+          fi
 
-          # 扫描 docs 下的所有 .md 和 .mdx 文件
-          find docs -type f \( -iname '*.md' -o -iname '*.mdx' \) | while read -r filepath; do
-            # 生成 slug：去掉 docs/ 前缀和后缀
-            slug=$(echo "$filepath" | sed -e 's|^docs/||' -e 's|\.[Mm][Dd][Xx]\?$||')
-            echo "→ Processing $filepath (slug: $slug)"
+      - name: Publish docs to ReadMe via API
+        env:
+          README_API_KEY: ${{ secrets.README_API_KEY }}      # Your ReadMe API key
+          README_PROJECT_ID: ${{ secrets.README_PROJECT_ID }} # Your ReadMe project identifier
+          READ_ME_API_URL: https://dash.readme.com/api/v1
+        run: |
+          VERSION_ID="${{ steps.params.outputs.version_id }}"
+          # Iterate through every file in the docs branch and publish it
+          find . -type f | while read file; do
+            page_path="${file#./}"
+            slug="${page_path%.*}"
+            body=$(sed 's/"/\\"/g' "$file")
 
-            # 读取并 JSON-encode 文件内容
-            body=$(jq -Rs . < "$filepath")
-
-            # 查询是否已经存在同名页面
-            resp=$(curl -s -G \
-              --data-urlencode "slug=$slug" \
-              "$READMECOM_API_BASE/content" \
-              -H "Authorization: Basic $API_KEY")
-            id=$(echo "$resp" | jq -r '.[0].id // empty')
-
-            if [ -z "$id" ]; then
-              echo "   • Creating new page"
-              curl -s -X POST "$READMECOM_API_BASE/content" \
-                -H "Authorization: Basic $API_KEY" \
-                -H "Content-Type: application/json" \
-                -d '{
-                  "project": "'"${PROJECT}"'",
-                  "category": "guides",
-                  "slug": "'"${slug}"'",
-                  "title": "'"${slug//-/ }"'",
-                  "body": '"$body"'
-                }'
-            else
-              echo "   • Updating page ID $id"
-              curl -s -X PUT "$READMECOM_API_BASE/content/$id" \
-                -H "Authorization: Basic $API_KEY" \
-                -H "Content-Type: application/json" \
-                -d '{
-                  "body": '"$body"'
-                }'
-            fi
-
-            echo
+            curl -X POST "$READ_ME_API_URL/docs" \
+              -H "Authorization: $README_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "project": "'"$README_PROJECT_ID"'",
+                "version": "'"$VERSION_ID"'",
+                "slug": "'"$slug"'",
+                "title": "'"$page_path"'",
+                "body": "'"$body"'"
+              }'
           done
-
-      - name: Done
-        run: echo "✅ All docs (.md & .mdx) have been synced to ReadMe.com"
